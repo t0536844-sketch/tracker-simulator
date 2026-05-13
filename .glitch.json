@@ -1,0 +1,16 @@
+{
+  "name": "tracker-simulator",
+  "description": "Educational GPS tracking simulator",
+  "features": {
+    "safeMode": {
+      "enabled": false
+    }
+  },
+  "packager": {
+    "useConfigFile": true,
+    "install": "npm install",
+    "restartOn": {
+      "include": ["server.js", "public/**", ".env"]
+    }
+  }
+}
