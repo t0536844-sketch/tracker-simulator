@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Phone Tracker Simulator v2</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f0f0f; color: #eee; height: 100vh; display: flex; flex-direction: column; }
+
+    /* Header */
+    header { background: #1a1a2e; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #16213e; flex-shrink: 0; }
+    header h1 { font-size: 1rem; color: #00d2ff; }
+    .status { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
+    .dot.connected { background: #2ecc71; box-shadow: 0 0 6px #2ecc71; }
+    .dot.disconnected { background: #e74c3c; }
+
+    /* Tabs */
+    .tabs { display: flex; background: #111; border-bottom: 1px solid #333; flex-shrink: 0; }
+    .tab-btn { flex: 1; padding: 8px 4px; text-align: center; font-size: 0.75rem; background: none; border: none; color: #888; cursor: pointer; border-bottom: 2px solid transparent; transition: all .2s; }
+    .tab-btn.active { color: #00d2ff; border-bottom-color: #00d2ff; }
+    .tab-btn:hover { color: #fff; }
+    .tab-icon { font-size: 1.1rem; display: block; }
+
+    /* Map */
+    #map { flex: 1; z-index: 1; }
+
+    /* Panels */
+    .panel {
+      position: absolute; top: 96px; right: 8px; z-index: 1000;
+      background: #1a1a2eee; backdrop-filter: blur(8px);
+      border-radius: 10px; padding: 12px; width: 240px; max-height: calc(100vh - 110px);
+      overflow-y: auto; box-shadow: 0 4px 20px #0008;
+      display: none;
+    }
+    .panel.visible { display: block; }
+    .panel h2 { font-size: 0.8rem; color: #888; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+    .panel-close { float: right; background: none; border: none; color: #888; font-size: 1.2rem; cursor: pointer; }
+
+    /* Device cards */
+    .device-card { background: #252540; border-radius: 8px; padding: 8px; margin-bottom: 6px; border-left: 4px solid var(--c); }
+    .device-card .name { font-weight: 600; font-size: 0.8rem; }
+    .device-card .coords { font-size: 0.7rem; color: #aaa; margin-top: 3px; font-family: monospace; }
+    .device-card .time { font-size: 0.65rem; color: #666; margin-top: 2px; }
+
+    /* Form inputs */
+    input, select { background: #252540; border: 1px solid #444; color: #eee; padding: 6px 8px; border-radius: 6px; font-size: 0.75rem; width: 100%; margin-bottom: 6px; }
+    input:focus, select:focus { outline: none; border-color: #00d2ff; }
+    label { font-size: 0.7rem; color: #888; display: block; margin-bottom: 2px; }
+    .btn { background: #00d2ff; color: #000; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; font-weight: 600; }
+    .btn:hover { background: #00b8d9; }
+    .btn-sm { padding: 4px 8px; font-size: 0.7rem; }
+    .btn-danger { background: #e74c3c; color: #fff; }
+    .btn-danger:hover { background: #c0392b; }
+    .form-row { display: flex; gap: 6px; }
+    .form-row > * { flex: 1; }
+
+    /* Stats */
+    .stat-card { background: #252540; border-radius: 8px; padding: 8px; margin-bottom: 6px; border-left: 4px solid #00d2ff; }
+    .stat-card .name { font-weight: 600; font-size: 0.8rem; color: #00d2ff; }
+    .stat-row { display: flex; justify-content: space-between; font-size: 0.7rem; color: #aaa; margin-top: 3px; }
+
+    /* Alerts */
+    .alert-item { background: #252540; border-radius: 6px; padding: 6px 8px; margin-bottom: 4px; font-size: 0.75rem; }
+    .alert-item.enter { border-left: 3px solid #2ecc71; }
+    .alert-item.exit { border-left: 3px solid #e74c3c; }
+
+    /* Playback */
+    .playback-controls { display: flex; gap: 6px; margin-top: 8px; }
+    .speed-slider { width: 100%; }
+
+    /* Pulse marker */
+    .pulse-marker {
+      border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 12px var(--c);
+      background: var(--c); animation: pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.3); opacity: 0.7; }
+    }
+
+    /* Geofence label */
+    .gf-label { background: none !important; border: none !important; box-shadow: none !important; }
+    .gf-label span { background: #e74c3c88; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; }
+
+    /* Toast */
+    #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1a1a2eee; color: #eee; padding: 10px 20px; border-radius: 8px; font-size: 0.8rem; z-index: 9999; display: none; box-shadow: 0 4px 20px #0008; }
+    #toast.show { display: block; animation: slideUp .3s ease; }
+    @keyframes slideUp { from { transform: translateX(-50%) translateY(20px); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: #111; }
+    ::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📡 Tracker Simulator v2</h1>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <a href="/share.html" style="color:#f39c12;font-size:0.75rem;text-decoration:none;font-weight:600;">📤 Share</a>
+      <a href="/report.html" style="color:#2ecc71;font-size:0.75rem;text-decoration:none;font-weight:600;">📍 Reporter</a>
+      <div class="status">
+        <span id="status-text">Disconnected</span>
+        <div class="dot disconnected" id="status-dot"></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="map"><span class="tab-icon">🗺️</span>Map</button>
+    <button class="tab-btn" data-tab="devices"><span class="tab-icon">📱</span>Devices</button>
+    <button class="tab-btn" data-tab="stats"><span class="tab-icon">📊</span>Stats</button>
+    <button class="tab-btn" data-tab="geofence"><span class="tab-icon">🚧</span>Geofence</button>
+    <button class="tab-btn" data-tab="playback"><span class="tab-icon">⏪</span>Playback</button>
+    <button class="tab-btn" data-tab="interactive"><span class="tab-icon">🎮</span>Drag</button>
+  </div>
+
+  <div id="map"></div>
+
+  <!-- Map Panel -->
+  <div class="panel visible" id="panel-map">
+    <button class="panel-close" onclick="togglePanel('map')">&times;</button>
+    <h2>Live Tracking</h2>
+    <div id="device-list"></div>
+  </div>
+
+  <!-- Devices Panel -->
+  <div class="panel" id="panel-devices">
+    <button class="panel-close" onclick="togglePanel('devices')">&times;</button>
+    <h2>Manage Devices</h2>
+    <div id="device-manage-list"></div>
+    <hr style="border-color:#333; margin: 8px 0;">
+    <h2>Add Device</h2>
+    <label>ID</label><input id="new-dev-id" placeholder="dev-5" />
+    <label>Name</label><input id="new-dev-name" placeholder="My Phone" />
+    <div class="form-row">
+      <div><label>Color</label><input id="new-dev-color" type="color" value="#9b59b6" /></div>
+      <div><label>Speed</label><input id="new-dev-speed" type="number" step="0.0001" value="0.0005" /></div>
+    </div>
+    <button class="btn" onclick="addDevice()" style="width:100%">+ Add Device</button>
+  </div>
+
+  <!-- Stats Panel -->
+  <div class="panel" id="panel-stats">
+    <button class="panel-close" onclick="togglePanel('stats')">&times;</button>
+    <h2>Statistics</h2>
+    <div id="stats-list"></div>
+  </div>
+
+  <!-- Geofence Panel -->
+  <div class="panel" id="panel-geofence">
+    <button class="panel-close" onclick="togglePanel('geofence')">&times;</button>
+    <h2>Geofence Zones</h2>
+    <button class="btn btn-sm" onclick="startDrawGeofence()" style="width:100%; margin-bottom:8px;">📐 Draw Zone on Map</button>
+    <label>Zone Name</label><input id="gf-name" placeholder="Office" />
+    <div class="form-row">
+      <div><label>Radius (m)</label><input id="gf-radius" type="number" value="500" /></div>
+      <div><label>Color</label><input id="gf-color" type="color" value="#e74c3c" /></div>
+    </div>
+    <div id="gf-manage-list"></div>
+  </div>
+
+  <!-- Playback Panel -->
+  <div class="panel" id="panel-playback">
+    <button class="panel-close" onclick="togglePanel('playback')">&times;</button>
+    <h2>Playback</h2>
+    <label>Speed: <span id="playback-speed-label">1x</span></label>
+    <input id="playback-speed" class="speed-slider" type="range" min="1" max="50" value="10" />
+    <div class="playback-controls">
+      <button class="btn btn-sm" onclick="playPlayback()">▶ Play</button>
+      <button class="btn btn-sm" onclick="pausePlayback()">⏸ Pause</button>
+      <button class="btn btn-sm btn-danger" onclick="stopPlayback()">⏹ Stop</button>
+    </div>
+    <div id="playback-info" style="font-size:0.7rem; color:#888; margin-top:8px;"></div>
+  </div>
+
+  <!-- Interactive Panel -->
+  <div class="panel" id="panel-interactive">
+    <button class="panel-close" onclick="togglePanel('interactive')">&times;</button>
+    <h2>Drag Mode</h2>
+    <p style="font-size:0.7rem; color:#888; margin-bottom:8px;">Click "Enable Drag" then drag markers on the map to simulate custom positions.</p>
+    <button class="btn btn-sm" id="drag-toggle" onclick="toggleDragMode()" style="width:100%; margin-bottom:8px;">🔧 Enable Drag</button>
+    <div id="drag-info" style="font-size:0.7rem; color:#888;"></div>
+  </div>
+
+  <!-- Alerts toast -->
+  <div id="toast"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // --- State ---
+    const markers = {};
+    const trailLines = {};
+    const geofenceCircles = {};
+    let dragMode = false;
+    let playbackData = [];
+    let playbackIndex = 0;
+    let playbackTimer = null;
+    let playbackSpeed = 10;
+
+    // --- Map ---
+    const map = L.map('map', { zoomControl: false }).setView([-6.175, 106.827], 12);
+    L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19,
+    }).addTo(map);
+
+    // --- Tabs ---
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('visible'));
+        const panel = document.getElementById(`panel-${tab}`);
+        if (panel) panel.classList.add('visible');
+        map.invalidateSize();
+        if (tab === 'stats') loadStats();
+        if (tab === 'playback') loadPlayback();
+        if (tab === 'geofence') loadGeofences();
+        if (tab === 'devices') loadDevicesManage();
+      });
+    });
+
+    function togglePanel(tab) {
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('visible'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      map.invalidateSize();
+    }
+
+    // --- Helpers ---
+    function getIcon(color) {
+      return L.divIcon({
+        className: '',
+        html: `<div class="pulse-marker" style="--c:${color}; width:18px; height:18px;"></div>`,
+        iconSize: [18, 18], iconAnchor: [9, 9],
+      });
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'show';
+      setTimeout(() => t.className = '', 3000);
+    }
+
+    // --- WebSocket ---
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const deviceListEl = document.getElementById('device-list');
+
+    function connect() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(`${proto}://${location.host}`);
+
+      ws.onopen = () => { statusDot.className = 'dot connected'; statusText.textContent = 'Live'; };
+      ws.onclose = () => {
+        statusDot.className = 'dot disconnected';
+        statusText.textContent = 'Disconnected — reconnecting...';
+        setTimeout(connect, 2000);
+      };
+
+      ws.onmessage = (ev) => {
+        const data = JSON.parse(ev.data);
+        if (data.type !== 'positions') return;
+
+        // Update devices + markers + trails + geofences
+        const listHTML = [];
+        for (const d of data.devices) {
+          if (markers[d.id]) {
+            markers[d.id].setLatLng([d.lat, d.lng]);
+            if (dragMode) markers[d.id].dragging?.enable();
+          } else {
+            const m = L.marker([d.lat, d.lng], { icon: getIcon(d.color), draggable: dragMode })
+              .bindPopup(`<b>${d.name}</b><br><code>${d.lat.toFixed(5)}, ${d.lng.toFixed(5)}</code>`)
+              .addTo(map);
+            if (dragMode) m.dragging.enable();
+            markers[d.id] = m;
+          }
+
+          // Trail
+          if (data.trails && data.trails[d.id]) {
+            const pts = data.trails[d.id].map(p => [p.lat, p.lng]);
+            if (pts.length > 1) {
+              if (trailLines[d.id]) trailLines[d.id].setLatLngs(pts);
+              else trailLines[d.id] = L.polyline(pts, { color: d.color, weight: 2, opacity: 0.6 }).addTo(map);
+            }
+          }
+
+          const time = new Date(d.timestamp).toLocaleTimeString();
+          listHTML.push(`
+            <div class="device-card" style="--c:${d.color}">
+              <div class="name">${d.name}</div>
+              <div class="coords">${d.lat.toFixed(5)}, ${d.lng.toFixed(5)} · ${d.speed.toFixed(1)} m/s</div>
+              <div class="time">${time}</div>
+            </div>`);
+        }
+        deviceListEl.innerHTML = listHTML.join('');
+
+        // Geofences
+        if (data.geofences) {
+          for (const gf of data.geofences) {
+            if (!geofenceCircles[gf.id]) {
+              const c = L.circle([gf.lat, gf.lng], {
+                radius: gf.radius, color: gf.color, fillColor: gf.color, fillOpacity: 0.1, weight: 2
+              }).addTo(map);
+              c.bindTooltip(gf.name, { className: 'gf-label' });
+              geofenceCircles[gf.id] = c;
+            }
+          }
+        }
+
+        // Alerts
+        if (data.alerts && data.alerts.length > 0) {
+          for (const a of data.alerts) {
+            const icon = a.type === 'enter' ? '🟢' : '🔴';
+            showToast(`${icon} <b>${a.device}</b> ${a.type === 'enter' ? 'entered' : 'left'} <b>${a.geofence}</b>`);
+          }
+        }
+      };
+    }
+    connect();
+
+    // --- Device management ---
+    async function addDevice() {
+      const id = document.getElementById('new-dev-id').value.trim();
+      const name = document.getElementById('new-dev-name').value.trim();
+      const color = document.getElementById('new-dev-color').value;
+      const speed = parseFloat(document.getElementById('new-dev-speed').value);
+      if (!id || !name) return showToast('⚠️ ID and name required');
+      await fetch('/api/devices', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, name, color, speed }),
+      });
+      showToast(`✅ Device "${name}" added`);
+      document.getElementById('new-dev-id').value = '';
+      document.getElementById('new-dev-name').value = '';
+      loadDevicesManage();
+    }
+
+    async function loadDevicesManage() {
+      const res = await fetch('/api/devices');
+      const devs = await res.json();
+      document.getElementById('device-manage-list').innerHTML = devs.map(d => `
+        <div class="device-card" style="--c:${d.color}; opacity:${d.active ? 1 : 0.4}">
+          <div class="name">${d.name}</div>
+          <div class="coords">ID: ${d.id} · Speed: ${d.speed}</div>
+          ${d.active ? `<button class="btn btn-sm btn-danger" style="margin-top:4px;" onclick="deleteDevice('${d.id}')">Remove</button>` : '<div style="font-size:0.65rem;color:#666;">Removed</div>'}
+        </div>`).join('');
+    }
+
+    async function deleteDevice(id) {
+      await fetch(`/api/devices/${id}`, { method: 'DELETE' });
+      showToast('🗑️ Device removed');
+      loadDevicesManage();
+    }
+
+    // --- Stats ---
+    async function loadStats() {
+      const res = await fetch('/api/stats');
+      const stats = await res.json();
+      document.getElementById('stats-list').innerHTML = Object.values(stats).map(s => `
+        <div class="stat-card">
+          <div class="name">${s.name}</div>
+          <div class="stat-row"><span>Points</span><span>${s.totalPoints}</span></div>
+          <div class="stat-row"><span>Distance</span><span>${s.distanceM}m</span></div>
+          <div class="stat-row"><span>Avg Speed</span><span>${s.avgSpeed} m/s</span></div>
+          <div class="stat-row"><span>Last seen</span><span>${new Date(s.lastSeen).toLocaleTimeString()}</span></div>
+        </div>`).join('') || '<div style="color:#666;font-size:0.75rem;">No data yet</div>';
+    }
+
+    // --- Geofencing ---
+    let drawMode = false;
+    async function loadGeofences() {
+      const res = await fetch('/api/geofences');
+      const gfs = await res.json();
+      document.getElementById('gf-manage-list').innerHTML = gfs.map(gf => `
+        <div class="device-card" style="--c:${gf.color}">
+          <div class="name">${gf.name}</div>
+          <div class="coords">r=${gf.radius}m · ${gf.lat.toFixed(4)}, ${gf.lng.toFixed(4)}</div>
+          <button class="btn btn-sm btn-danger" style="margin-top:4px;" onclick="deleteGeofence(${gf.id})">Delete</button>
+        </div>`).join('') || '<div style="color:#666;font-size:0.75rem;">No zones yet</div>';
+    }
+
+    function startDrawGeofence() {
+      drawMode = true;
+      showToast('📐 Click on the map to set zone center');
+    }
+
+    map.on('click', async (e) => {
+      if (!drawMode) return;
+      drawMode = false;
+      const name = document.getElementById('gf-name').value || 'Zone ' + Date.now().toString().slice(-4);
+      const radius = parseInt(document.getElementById('gf-radius').value) || 500;
+      const color = document.getElementById('gf-color').value;
+      await fetch('/api/geofences', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, lat: e.latlng.lat, lng: e.latlng.lng, radius, color }),
+      });
+      showToast(`✅ Geofence "${name}" created`);
+      loadGeofences();
+    });
+
+    async function deleteGeofence(id) {
+      await fetch(`/api/geofences/${id}`, { method: 'DELETE' });
+      if (geofenceCircles[id]) { map.removeLayer(geofenceCircles[id]); delete geofenceCircles[id]; }
+      showToast('🗑️ Geofence removed');
+      loadGeofences();
+    }
+
+    // --- Playback ---
+    async function loadPlayback() {
+      const res = await fetch('/api/playback');
+      playbackData = await res.json();
+      playbackIndex = 0;
+      document.getElementById('playback-info').textContent = `${playbackData.length} points loaded`;
+    }
+
+    function playPlayback() {
+      if (playbackTimer) return;
+      if (playbackIndex >= playbackData.length) { playbackIndex = 0; }
+      document.getElementById('playback-speed-label').textContent = playbackSpeed + 'x';
+      playbackTimer = setInterval(() => {
+        if (playbackIndex >= playbackData.length) { stopPlayback(); return; }
+        const p = playbackData[playbackIndex];
+        if (markers[p.device_id]) {
+          markers[p.device_id].setLatLng([p.lat, p.lng]);
+          markers[p.device_id].setPopupContent(`<b>${p.name}</b><br><code>${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</code><br>${new Date(p.timestamp).toLocaleTimeString()}`);
+        }
+        playbackIndex++;
+        document.getElementById('playback-info').textContent = `Playing: ${playbackIndex}/${playbackData.length}`;
+      }, 200 / playbackSpeed);
+    }
+
+    function pausePlayback() { clearInterval(playbackTimer); playbackTimer = null; }
+    function stopPlayback() { clearInterval(playbackTimer); playbackTimer = null; playbackIndex = 0; document.getElementById('playback-info').textContent = 'Stopped'; }
+
+    document.getElementById('playback-speed').addEventListener('input', (e) => {
+      playbackSpeed = parseInt(e.target.value);
+      document.getElementById('playback-speed-label').textContent = playbackSpeed + 'x';
+    });
+
+    // --- Drag mode ---
+    function toggleDragMode() {
+      dragMode = !dragMode;
+      const btn = document.getElementById('drag-toggle');
+      btn.textContent = dragMode ? '🔧 Disable Drag' : '🔧 Enable Drag';
+      btn.style.background = dragMode ? '#e74c3c' : '#00d2ff';
+      document.getElementById('drag-info').textContent = dragMode ? 'Drag markers to move them' : 'Drag disabled';
+      for (const id in markers) {
+        if (dragMode) { markers[id].dragging?.enable(); }
+        else { markers[id].dragging?.disable(); }
+      }
+    }
+
+    // Handle drag end to report new position
+    document.addEventListener('DOMContentLoaded', () => {
+      // Will be handled when markers are created
+      setTimeout(() => {
+        for (const id in markers) {
+          markers[id].on('dragend', async (e) => {
+            const pos = e.target.getLatLng();
+            await fetch('/api/report', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ device_id: id, lat: pos.lat, lng: pos.lng }),
+            });
+          });
+        }
+      }, 3000);
+    });
+  </script>
+</body>
+</html>

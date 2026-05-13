@@ -1,0 +1,21 @@
+{
+  "name": "tracker-simulator",
+  "version": "2.0.0",
+  "description": "Educational GPS tracking simulator with real-time WebSocket, geofencing, and device management",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["gps", "tracking", "websocket", "leaflet", "geofencing"],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "sql.js": "^1.14.1",
+    "ws": "^8.20.1"
+  }
+}
